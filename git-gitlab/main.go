@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/xanzy/go-gitlab"
 )
@@ -12,8 +14,7 @@ func usage() {
 
 Subcommand:
     help          -- Show this message.
-    merged-branch -- List source branch name of merged MRs.
-`)
+    merged-branch -- List source branch name of merged MRs.`)
 }
 
 func main() {
@@ -36,20 +37,84 @@ func main() {
 }
 
 func mergedBranch() error {
+	url := os.Getenv("GITLAB_URL")
+	if url == "" {
+		return fmt.Errorf("GITLAB_URL is not set.")
+	}
+	repo := os.Getenv("GITLAB_REPO")
+	if repo == "" {
+		return fmt.Errorf("GITLAB_REPO is not set.")
+	}
 	token := os.Getenv("GITLAB_API_TOKEN")
 	if token == "" {
 		return fmt.Errorf("GITLAB_API_TOKEN is not set.")
 	}
-	git := gitlab.NewClient(nil, token)
-	git.SetBaseURL("http://localhost:8080/api/v4")
+	info := gitlabInfo{url + "/api/v4", repo, token}
 
-	opt := &gitlab.ListProjectMergeRequestsOptions{
-		State: gitlab.String("opened"),
-	}
-	mrs, _, err := git.MergeRequests.ListProjectMergeRequests("root/test", opt)
+	mrs, err := getMergedRequests(info)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%v %v %v->%v", mrs[0].IID, mrs[0].Title, mrs[0].SourceBranch, mrs[0].TargetBranch)
+	for _, mr := range mrs {
+		fmt.Printf("!%v %v (%v -> %v)\n", mr.id, mr.title, mr.sourceBranch, mr.targetBranch)
+	}
+
+	branches, err := getRemoteBranches("origin")
+	if err != nil {
+		return err
+	}
+	fmt.Println(branches)
+
 	return nil
+}
+
+type gitlabInfo struct {
+	url   string
+	repo  string
+	token string
+}
+
+type mergeRequest struct {
+	id           int
+	title        string
+	sourceBranch string
+	targetBranch string
+}
+
+func getMergedRequests(info gitlabInfo) ([]mergeRequest, error) {
+	git := gitlab.NewClient(nil, info.token)
+	git.SetBaseURL(info.url)
+
+	opt := &gitlab.ListProjectMergeRequestsOptions{
+		State: gitlab.String("merged"),
+	}
+	mrs, _, err := git.MergeRequests.ListProjectMergeRequests(info.repo, opt)
+	if err != nil {
+		return nil, err
+	}
+	var mergeRequests []mergeRequest
+	for _, mr := range mrs {
+		mergeRequests = append(mergeRequests, mergeRequest{
+			mr.IID, mr.Title, mr.SourceBranch, mr.TargetBranch,
+		})
+	}
+	return mergeRequests, nil
+}
+
+func getRemoteBranches(remote string) ([]string, error) {
+	out, err := exec.Command("git", "branch", "-a").Output()
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(out), "\n")
+
+	var branches []string
+	prefix := fmt.Sprintf("remotes/%s/", remote)
+	for _, line := range lines {
+		s := strings.Trim(line, " ")
+		if strings.Index(s, prefix) == 0 {
+			branches = append(branches, strings.TrimPrefix(s, prefix))
+		}
+	}
+	return branches, nil
 }
