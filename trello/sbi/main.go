@@ -86,7 +86,11 @@ func parseCard(card Card) (*Sbi, bool) {
 }
 
 func main() {
-	raw, err := ioutil.ReadFile("backlog.json")
+	if len(os.Args) != 2 {
+		fmt.Printf("Usage: %v backlog.json\n", os.Args[0])
+		os.Exit(1)
+	}
+	raw, err := ioutil.ReadFile(os.Args[1])
 	if err != nil {
 		fmt.Println(err.Error())
 		os.Exit(1)
