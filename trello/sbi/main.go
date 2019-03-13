@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strconv"
 )
 
@@ -42,6 +43,12 @@ type Sbi struct {
 	Impl   float64
 	Review float64
 }
+
+type bySbiNumber []*Sbi
+
+func (x bySbiNumber) Len() int           { return len(x) }
+func (x bySbiNumber) Less(i, j int) bool { return x[i].Number < x[j].Number }
+func (x bySbiNumber) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
 // parseHour returns the number of hours from label text like "2.5h".
 func parseHour(label string) (float64, bool) {
@@ -107,11 +114,15 @@ func main() {
 	for _, list := range board.Lists {
 		listMap[list.Id] = list
 	}
+	sbiList := make(bySbiNumber, 0)
 	for _, card := range board.Cards {
 		sbi, ok := parseCard(card)
-		if !ok {
-			continue
+		if ok {
+			sbiList = append(sbiList, sbi)
 		}
+	}
+	sort.Sort(sbiList)
+	for _, sbi := range sbiList {
 		list := listMap[sbi.IdList]
 		if !list.Closed && (sbi.Impl > 0 || sbi.Review > 0) {
 			fmt.Printf("%v\t%v\t%v\t%v\t%v\t%v\n",
